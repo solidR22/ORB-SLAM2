@@ -633,4 +633,10 @@ vector<cv::KeyPoint> System::GetTrackedKeyPointsUn()
     return mTrackedKeyPointsUn;
 }
 
+void System::SaveMap(const string &filename, const cv::MatSize image_size)
+{
+    mpMap -> Save(filename, image_size);
+    mpMap -> saveAsColmap("/home/silab/SLAM/ORB_SLAM2_fixed/result/");
+}
+
 } //namespace ORB_SLAM

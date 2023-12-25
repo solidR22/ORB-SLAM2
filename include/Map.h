@@ -143,6 +143,15 @@ public:
     //? 如果插入的地图点id不同,但是由于误差等原因,产生的地图点非常相近,这个时候怎么处理?
     std::mutex mMutexPointCreation;
 
+    // 导入OpenMVS
+    void Save(const string &filename,const cv::MatSize image_size);
+    void SaveMapPoint(ofstream &f, MapPoint* mp);
+    void SaveKeyFrame(ofstream &f, KeyFrame* kf);
+    std::vector<int> KeyId;
+
+    void saveAsColmap(const string &path);
+
+
 protected:
     // 存储所有的地图点
     std::set<MapPoint*> mspMapPoints; 

@@ -31,7 +31,7 @@
 
 
 #include "Map.h"
-
+#include "Converter.h"
 #include<mutex>
 
 namespace ORB_SLAM2
@@ -178,6 +178,160 @@ void Map::clear()
     mnMaxKFid = 0;
     mvpReferenceMapPoints.clear();
     mvpKeyFrameOrigins.clear();
+}
+
+// 对关键帧相关数据进行保存(没用)
+void Map::Save(const string &filename,const cv::MatSize image_size)
+{
+    std::cout << "SFM Saving to "<< filename << std::endl;
+    ofstream f;
+    f.open(filename.c_str());
+
+    f << "MVS "<< image_size[1] << " "<< image_size[0] << endl;
+    // 输出关键帧的数量
+    cout << "The number of KeyFrames: " << mspKeyFrames.size() << endl;
+
+    unsigned long int nKeyFrames = mspKeyFrames.size();
+    f << nKeyFrames << endl;
+    for(auto kf:mspKeyFrames)
+        SaveKeyFrame(f,kf);
+
+    // 输出空间三维点的数目
+    cout << "The number of MapPoints: " << mspMapPoints.size();
+    unsigned long int nMapPoints = mspMapPoints.size();
+    f << nMapPoints << endl;
+
+    for(auto mp:mspMapPoints)
+        SaveMapPoint(f,mp);
+
+    f.close();
+
+}
+
+//  保存地图点
+void Map::SaveMapPoint(ofstream &f, MapPoint *mp)
+{
+#if 0
+    //保存当前MapPoint世界坐标值
+    cv::Mat mpWorldPos = mp->GetWorldPos();
+    f <<" " <<mpWorldPos.at<float>(0)<<" " << mpWorldPos.at<float>(1)<<" " << mpWorldPos.at<float>(2) << " ";
+
+    std::map<KeyFrame*,size_t> mapObservation = mp->GetObservations();
+    f << mapObservation.size() << " ";
+    for(auto mit = mapObservation.begin(); mit != mapObservation.end(); mit++)
+    {
+        int Frameid;
+        Frameid = mit->first->mnId;
+        auto keyid = find(KeyId.begin(),KeyId.end(),Frameid) - KeyId.begin();
+        f << keyid << " ";
+    }
+    f << "\n";
+#else
+    cv::Mat mpWorldPos = mp->GetWorldPos();
+    f << 1 << " " << mpWorldPos.at<float>(0)<<" " << mpWorldPos.at<float>(1)<<" " << mpWorldPos.at<float>(2) << " ";
+    f << 100 << " " << 100 << " " << 100 << " " << 1 << " ";
+    std::map<KeyFrame*,size_t> mapObservation = mp->GetObservations();
+    // f << mapObservation.size() << " ";
+    for(auto mit = mapObservation.begin(); mit != mapObservation.end(); mit++)
+    {
+        int Frameid;
+        Frameid = mit->first->mnId;
+        auto keyid = find(KeyId.begin(),KeyId.end(),Frameid) - KeyId.begin();
+        f << keyid + 1 << " " << 1 << " ";
+    }
+    f << "\n";
+
+#endif
+}
+
+//  保存关键帧
+void Map::SaveKeyFrame(ofstream &f, KeyFrame *kf)
+{
+    KeyId.push_back(kf->mnId);
+    // 保存当前关键帧的id
+    // f << KeyId.end() - KeyId.begin() - 1<< " ";
+    f << KeyId.end() - KeyId.begin()<< " ";
+#if 0
+    // 关键帧内参
+    f << kf->fx << " " << kf->fy << " " << kf->cx << " " << kf->cy << " ";
+    // 保存当前关键帧的位姿
+    cv::Mat Tcw = kf->GetPose();
+    cout << "GetPose " << std::to_string(kf->mTimeStamp) <<"\nTcw\n" <<Tcw<< endl;
+    cv::Mat Rcw = Tcw.rowRange(0,3).colRange(0,3);
+    cout << "Rcw\n" << Rcw << endl;
+    // 通过四元数保存旋转矩阵
+    std::vector<float> Quat = Converter::toQuaternion(Rcw);
+
+    for(int i=0; i<4; i++)
+    {
+        f << Quat[(3+i)%4] << " ";// qw qx qy qz
+    }
+    //保存平移
+    for(int i=0; i<3; i++)
+    {
+        f << Tcw.at<float>(i,3) << " ";
+    }
+    ostringstream sTimeStamp;
+    sTimeStamp << std::to_string(kf->mTimeStamp);
+    f << sTimeStamp.str();
+    f << "\n";
+#else
+    // cv::Mat Twc = kf->GetPoseInverse();
+    cv::Mat Tcw = kf->GetPose();
+    cv::Mat Rcw = Tcw.colRange(0,3).rowRange(0,3);
+    cv::Mat tcw = Tcw.rowRange(0,3).col(3);
+    std::vector<float> Quat = Converter::toQuaternion(Rcw);
+    for(int i=0; i<4; i++)
+    {
+        f << Quat[(3+i)%4] << " ";// qw qx qy qz
+    }
+    //保存平移
+    for(int i=0; i<3; i++)
+    {
+        f << tcw.at<float>(i) << " ";
+    }
+    f << 1 << " "; // Camera ID
+    f << std::to_string(kf->mTimeStamp);
+    f << ".png\n";
+    f << 1 << endl; // gap
+#endif
+
+}
+
+void Map::saveAsColmap(const string &path)
+{
+    // cameras.txt
+    KeyId.clear();
+    ofstream fout;
+    fout.open(path + "/cameras.txt", ios::out);
+
+    fout << "# Camera list with one line of data per camera: \n";
+    fout << "#   CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[] \n";
+    fout << "# Number of cameras: 1 \n";
+    fout << 1 << " " << "PINHOLE" << " " << 640 << " " << 480 << " " << " " << 517.306408 << " " << 516.469215 << " " << 318.643040 << " " << 255.313989 << " " << endl;
+
+    fout.close();
+
+    // images.txt
+    fout.open(path + "images.txt", ios::out);
+    fout << "# Image list with two lines of data per image: \n";
+    fout << "#   IMAGE_ID, QW, QX, QY, QZ, TX, TY, TZ, CAMERA_ID, NAME \n";
+    fout << "#   POINTS2D[] as (X, Y, POINT3D_ID)"<<endl;
+    unsigned long int nKeyFrames = mspKeyFrames.size();
+    fout << "# Number of images: " << nKeyFrames << ", mean observations per image: 1\n";
+    for(auto kf:mspKeyFrames)
+        SaveKeyFrame(fout,kf);
+    fout.close();
+
+    // points3D.txt
+    fout.open(path + "/points3D.txt", ios::out);
+    fout << "# 3D point list with one line of data per point:\n";
+    fout << "#   POINT3D_ID, X, Y, Z, R, G, B, ERROR, TRACK[] as (IMAGE_ID, POINT2D_IDX)\n";
+    unsigned long int nMapPoints = mspMapPoints.size();
+    fout << "# Number of points: " << nMapPoints << ", mean track length: 4.4481132075471699" << endl;
+    for(auto mp:mspMapPoints)
+        SaveMapPoint(fout, mp);
+    fout.close();
 }
 
 } //namespace ORB_SLAM

@@ -385,7 +385,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     // Step 2：添加顶点：待优化当前帧的Tcw
     g2o::VertexSE3Expmap * vSE3 = new g2o::VertexSE3Expmap();
     vSE3->setEstimate(Converter::toSE3Quat(pFrame->mTcw));
-     // 设置id
+    // 设置id
     vSE3->setId(0);    
     // 要优化的变量，所以不能固定
     vSE3->setFixed(false);
@@ -419,6 +419,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     // 遍历当前地图中的所有地图点
     for(int i=0; i<N; i++)
     {
+        // 此处是匹配上的地图点
         MapPoint* pMP = pFrame->mvpMapPoints[i];
         // 如果这个地图点还存在没有被剔除掉
         if(pMP)
@@ -473,7 +474,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
                 Eigen::Matrix<double,3,1> obs;// 这里和单目不同
                 const cv::KeyPoint &kpUn = pFrame->mvKeysUn[i];
                 const float &kp_ur = pFrame->mvuRight[i];
-                obs << kpUn.pt.x, kpUn.pt.y, kp_ur;// 这里和单目不同
+                obs << kpUn.pt.x, kpUn.pt.y, kp_ur;// 这里和单目不同，特征点的x、y、右图的x
                 // 新建节点,注意这里也是只优化位姿
                 g2o::EdgeStereoSE3ProjectXYZOnlyPose* e = new g2o::EdgeStereoSE3ProjectXYZOnlyPose();// 这里和单目不同
 
@@ -526,7 +527,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
     // 一共进行四次优化
     for(size_t it=0; it<4; it++)
     {
-
+        // 设置优化的量
         vSE3->setEstimate(Converter::toSE3Quat(pFrame->mTcw));
         // 其实就是初始化优化器,这里的参数0就算是不填写,默认也是0,也就是只对level为0的边进行优化
         optimizer.initializeOptimization(0);
@@ -535,7 +536,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
 
         nBad=0;
         // 优化结束,开始遍历参与优化的每一条误差边(单目)
-        for(size_t i=0, iend=vpEdgesMono.size(); i<iend; i++)
+        for(size_t i=0, iend=vpEdgesMono.size(); i<iend; i++)// 对单目误差边的处理
         {
             g2o::EdgeSE3ProjectXYZOnlyPose* e = vpEdgesMono[i];
 
@@ -564,7 +565,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
 
             if(it==2)
                 e->setRobustKernel(0); // 除了前两次优化需要RobustKernel以外, 其余的优化都不需要 -- 因为重投影的误差已经有明显的下降了
-        } // 对单目误差边的处理
+        } 
         // 同样的原理遍历双目的误差边
         for(size_t i=0, iend=vpEdgesStereo.size(); i<iend; i++)
         {
@@ -612,7 +613,7 @@ int Optimizer::PoseOptimization(Frame *pFrame)
 
 /*
  * @brief Local Bundle Adjustment
- *
+ * 
  * 1. Vertex:
  *     - g2o::VertexSE3Expmap()，LocalKeyFrames，即当前关键帧的位姿、与当前关键帧相连的关键帧的位姿
  *     - g2o::VertexSE3Expmap()，FixedCameras，即能观测到LocalMapPoints的关键帧（并且不属于LocalKeyFrames）的位姿，在优化中这些关键帧的位姿不变
@@ -684,7 +685,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     } // 遍历 lLocalKeyFrames 中的每一个关键帧
 
     // Fixed Keyframes. Keyframes that see Local MapPoints but that are not Local Keyframes
-    // Step 3 得到能被局部MapPoints观测到，但不属于局部关键帧的(二级)关键帧，这些关键帧在局部BA优化时不优化
+    // Step 3 得到能被观测到局部MapPoints，但不属于局部关键帧的(二级)关键帧，这些关键帧在局部BA优化时不优化
     list<KeyFrame*> lFixedCameras;
     // 遍历局部地图中的每个地图点
     for(list<MapPoint*>::iterator lit=lLocalMapPoints.begin(), lend=lLocalMapPoints.end(); lit!=lend; lit++)
@@ -765,6 +766,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     // 边的数目 = pose数目 * 地图点数目
     const int nExpectedSize = (lLocalKeyFrames.size()+lFixedCameras.size())*lLocalMapPoints.size();
 
+    // 单目
     vector<g2o::EdgeSE3ProjectXYZ*> vpEdgesMono;
     vpEdgesMono.reserve(nExpectedSize);
 
@@ -774,6 +776,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
     vector<MapPoint*> vpMapPointEdgeMono;
     vpMapPointEdgeMono.reserve(nExpectedSize);
 
+    // 双目或RGBD
     vector<g2o::EdgeStereoSE3ProjectXYZ*> vpEdgesStereo;
     vpEdgesStereo.reserve(nExpectedSize);
 
@@ -799,7 +802,7 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
         // 前面记录maxKFid的作用在这里体现
         int id = pMP->mnId+maxKFid+1;
         vPoint->setId(id);
-        // 因为使用了LinearSolverType，所以需要将所有的三维点边缘化掉
+        // 因为使用了LinearSolverType，所以需要将所有的三维点边缘化掉，边缘化是一种优化技术，可以将某些变量从优化中剔除，从而减少整个系统的维度
         vPoint->setMarginalized(true);  
         optimizer.addVertex(vPoint);
 
@@ -825,9 +828,11 @@ void Optimizer::LocalBundleAdjustment(KeyFrame *pKF, bool* pbStopFlag, Map* pMap
                     obs << kpUn.pt.x, kpUn.pt.y;
 
                     g2o::EdgeSE3ProjectXYZ* e = new g2o::EdgeSE3ProjectXYZ();
-
+                    // 这个点的ID
                     e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id)));
+                    // 看到这个点的帧的ID
                     e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(pKFi->mnId)));
+                    // 测量值
                     e->setMeasurement(obs);
                     // 权重为特征点所在图像金字塔的层数的倒数
                     const float &invSigma2 = pKFi->mvInvLevelSigma2[kpUn.octave];
