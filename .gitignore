@@ -1,0 +1,12 @@
+.vscode/
+build/
+lib/
+result/
+Thirdparty/
+Vocabulary/ORBvoc.txt
+Examples/Monocular/mono_euroc
+Examples/Monocular/mono_kitti
+Examples/Monocular/mono_tum
+Examples/RGB-D/rgbd_tum
+Examples/Stereo/stereo_euroc
+Examples/Stereo/stereo_kitti
